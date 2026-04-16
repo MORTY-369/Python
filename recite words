@@ -1,0 +1,228 @@
+# *python背单词*51
+import openpyxl
+import json
+import keyboard
+import time
+import random
+import win32com.client
+
+# 先读取json文件中的数据
+with open(r"D:\JetBrains\Code\Python\tool_cabinet\record.json", 'r', encoding='utf-8') as f1:
+    record = json.load(f1)  # 上次的记录record
+with open(r"D:\JetBrains\Code\Python\tool_cabinet\degree.json", 'r', encoding='utf-8') as f2:
+    degree = json.load(f2)   #不认识的程度degree
+
+# 泛背程度查看
+def examine(rows,degree):
+    print("\n【泛背程度查看】")
+    select = eval(input("全部初始化为零[1]、不认识程度合计[2]、程度表[3]："))
+    if select == 1:
+        degree = [0]*rows
+        with open(r"D:\JetBrains\Code\Python\tool_cabinet\degree.json", 'w', encoding='utf-8') as f2:
+            json.dump(degree, f2, ensure_ascii=False, indent=4)
+    elif select == 2:
+        print(f"\n不认识总度：{sum(degree)}/{len(degree)}")
+    elif select == 3:
+        for i in range(len(degree)):
+            if i%10 == 0:   #每行10个数据
+                print("\n")
+            print(f"{i+1}-{degree[i]}",end='       ')   #end表示按行输出，'       '表示同一行,用空格分隔
+    input("请直接退出程序\n")
+
+# 设置监听：当按下按键'0'或'1'时，转到函数,实现自动触发回车键
+def simulate_enter():
+    keyboard.press_and_release("enter")
+
+# 处理每行单词
+def dispose_row(word_row,count,start_time,record,degree):
+    word_row_show = ''
+    for u in range(0,len(word_row[1]),3):   #每3个字母进行分隔
+        word_row_show = word_row_show+word_row[1][u:u+3]+' '  #分隔符
+    condition = input(f"{word_row_show[:-1]}    ") #单词操作：认识[0]、不认识[1]
+    print(f"{word_row[2]}\n\n")
+
+    if condition == '0':
+        degree[word_row[0]-1] = 0
+    elif condition == '1':
+        degree[word_row[0]-1] = degree[word_row[0]-1]+1
+    elif condition == "cx":
+        keyboard.unhook_all()   #停用所有键盘监听
+        extensive(words,rows,record,degree)
+    elif condition == "pj":
+        stop_time = time.time()
+        study_time = str(round((stop_time-start_time)/60,0))+'m' #分
+        record = ["模式", "泛背", "票据", word_row[0], "共背", count-1, "用时", study_time, "日期", time.ctime()]
+        with open(r"D:\JetBrains\Code\Python\tool_cabinet\record.json", 'w', encoding='utf-8') as f1:  #统一写入json文件
+            json.dump(record, f1, ensure_ascii=False, indent=4)
+        with open(r"D:\JetBrains\Code\Python\tool_cabinet\degree.json", 'w', encoding='utf-8') as f2:
+            json.dump(degree, f2, ensure_ascii=False, indent=4)
+        input(f"泛背：票据{word_row[0]}、共背{count-1}、用时{study_time}、日期{time.ctime()}，请直接退出程序\n")
+
+# 精背模式
+def elaboration(words,rows):
+    print("\n【精背模式】")
+    select = eval(input("顺序默写[1]、乱序默写[2]："))
+    if select == 1:
+        begin = eval(input(f"上次'{words["I1"].value}'到第{words["I2"].value}个，这次从第几个开始："))
+        total = rows-begin+1
+        group = range(begin, rows+1)
+        message = "精背-顺序"
+    elif select == 2:
+        chaos_start, chaos_end = eval(input("请输入乱序区间："))    #两个数,英逗隔开
+        total = chaos_end-chaos_start+1
+        group = random.sample(range(chaos_start, chaos_end+1), total)  # 前面的参数表示从几到几随机输出，后面的参数控制整体的输出个数
+        message = "精背-乱序"
+    print(f"本次单词共：{total}个")
+    time.sleep(3)
+    print("\033[H\033[J", end="")  # CMD清屏，在Pycharm中无效果
+    start_time = time.time()
+
+    count = 0  # 计数，共背
+    error = 0  # 计数，错误
+    for i in group:
+        word_row = []
+        for j in words[i]:  # 获取整行的数据，然后依次把每个单元格内的数据给j
+            word_row.append(j.value)
+        count = count+1
+
+        print(f"\n\n{word_row[2]}")
+        spell = input()
+        if spell == "cx":
+            elaboration(words,rows)
+        elif spell == "pj":
+            stop_time = time.time()
+            study_time = str(round((stop_time-start_time)/60,0))+'m'  # 分
+            words["H1"] = "模式" ; words["I1"] = message
+            words["H2"] = "票据" ; words["I2"] = word_row[0]
+            words["H3"] = "共背" ; words["I3"] = count-1
+            words["H4"] = "共错" ; words["I4"] = error
+            words["H5"] = "用时" ; words["I5"] = study_time
+            words["H6"] = "日期" ; words["I6"] = time.ctime()
+            workbook.save(path)
+            input(f"{message}：票据{word_row[0]}、共背{count-1}、共错{error}、用时{study_time}、日期{time.ctime()}，请直接退出程序\n")
+        elif spell != word_row[1]:
+            error = error+1
+            print(f"{word_row[1]}")
+            for u in range(len(spell)): #找到首个不同的字符、用字符串spell，防止数组越界
+                if spell[u] != word_row[1][u]:
+                    print(' '*u+"↑")
+                    break   #找到首个，就跳出循环
+
+# 泛背模式
+def extensive(words,rows,record,degree):
+    print("\n【泛背模式】")
+    select = eval(input("是否需要回滚，是[1]、否[0]："))
+    begin = eval(input(f"上次'{record[1]}'到第{record[3]}个，这次从第几个开始："))
+    total = rows-begin+1
+    keyboard.add_hotkey('0', simulate_enter)
+    keyboard.add_hotkey('1', simulate_enter)
+    print(f"本次单词共：{total}个")
+    time.sleep(3)
+    print("\033[H\033[J", end="")  # CMD清屏，在Pycharm中无效果
+    start_time = time.time()
+
+    count = 0  # 不连回滚，已经背的个数
+    for i in range(begin, rows+1):
+        word_row = []
+        for j in words[i]:  # 获取整行的数据，然后依次把每个单元格内的数据给j
+            word_row.append(j.value)
+        count = count+1
+        dispose_row(word_row,count,start_time,record,degree)
+
+        if select == 1:  #回滚已经背的单词
+            for u in random.sample(range(begin, begin+count-1), count-1):  # 前面的参数表示从几到几随机输出，后面的参数控制整体的输出个数
+                word_row = []
+                for h in words[u]:
+                    word_row.append(h.value)
+                dispose_row(word_row,count,start_time,record,degree)
+            print(f"第{count}轮滚雪球，即将清屏")
+            time.sleep(0.5)  # 防止清屏太快
+            print("\033[H\033[J", end="")  # CMD清屏，在Pycharm中无效果
+
+# 速刷模式
+def quick_swipe(words,rows):
+    print("\n【速刷模式】")
+    select = eval(input("是否只朗读第一个翻译，是[1]、否[0]："))   #朗读全部翻译，或只朗读第一个翻译
+    begin = eval(input(f"上次'{words["I1"].value}'到第{words["I2"].value}个，这次从第几个开始："))
+    total = rows-begin+1
+    print(f"本次单词共：{total}个")
+    print("在CMD命名窗口下，停止运行的快捷键为Ctrl+C")
+    time.sleep(3)
+    print("\033[H\033[J", end="")  # CMD清屏，在Pycharm中无效果
+    speaker = win32com.client.Dispatch("SAPI.SpVoice")  #初始化语音合成引擎
+    speaker.Rate = 6.5   # 调整语速（范围通常为-10到10）正值加快，负值减慢
+    speaker.Volume = 100   # 调整音量（范围通常为0到100）
+    start_time = time.time()
+
+    count = 0  # 已经背的个数
+    for i in range(begin, rows+1):
+        word_row = []
+        for j in words[i]:  # 获取整行的数据，然后依次把每个单元格内的数据给j
+            word_row.append(j.value)
+        count = count+1
+
+        word_row_show = ''  #单词展示：每3个字母进行分隔
+        for u in range(0,len(word_row[1]),3):
+            word_row_show = word_row_show+word_row[1][u:u+3]+''  #分隔符   #12.19改：删除空格
+        word_row_aloud = '' #单词朗读：每1个字母进行分隔
+        for h in range(0,len(word_row[1])):
+            word_row_aloud = word_row_aloud+word_row[1][h]+' '  # 分隔符   #12.19改：删除空格
+        text = word_row[2]  #下面代码经常用到，这样以减少时间开销
+        try:
+            print(word_row_show)    #单词输出及朗读
+            for y in word_row_aloud:
+                speaker.Speak(y)
+            print(f"{text}\n\n") #翻译输出及朗读
+            if select == 1:
+                symbol_1 = '.'; symbol_2 = '，'; symbol_3 = '；'  #第一个单词的特征起始符号
+                cut_end_1 = 99 ; cut_end_2 = 99 #初始化，以防min报错
+                if symbol_1 in text:
+                    cut_start = text.find('.')+1
+                if symbol_2 in text:
+                    cut_end_1 = text.find('，')
+                if symbol_3 in text:
+                    cut_end_2 = text.find('；')
+                cut_end = min(cut_end_1,cut_end_2) #最近的一个
+                speaker.Speak(text[cut_start:cut_end])
+            elif select == 0:
+                speaker.Speak(text)  # 优化：可以使词性都不读出来
+        except:
+            stop_time = time.time()
+            study_time = str(round((stop_time-start_time)/60,0))+'m'  # 分
+            words["H1"] = "模式" ; words["I1"] = "速刷模式"
+            words["H2"] = "票据"; words["I2"] = word_row[0]
+            words["H3"] = "用时"; words["I3"] = study_time
+            words["H4"] = "日期"; words["I4"] = time.ctime()
+            workbook.save(path)
+            input(f"速刷模式：票据{word_row[0]}、共背{count-1}、用时{study_time}、日期{time.ctime()}，请直接退出程序\n")
+
+# main
+path = r"D:\重要文件夹\考研\3英二（重点）\英二.xlsx"
+workbook = openpyxl.load_workbook(path)
+keyword = input()
+sheet_select = eval(input(f"今天背第几个表，{workbook.sheetnames}："))-1 #转换为下标
+words = workbook[workbook.sheetnames[sheet_select]]
+rows = words.max_row
+if keyword == "jb":
+    elaboration(words,rows)
+elif keyword == "fb":
+    extensive(words,rows,record,degree)
+else:
+    quick_swipe(words,rows)
+input("\n单词已背完，辛苦了，请直接退出程序")
+
+# 说明
+# 1、程序流程图
+# 选择工作表 ->选择模式 -> 速刷模式（初级）-> 是否只朗读第一个翻译
+#                    -> 泛背模式（中级）-> 是否回滚
+#                    -> 精背模式（高级）-> 顺序还是乱序
+# 2、优化
+# [1]、可以不用json文件，因为每个工作表要记录的信息不同，初始化也不同，直接记Excel上
+# [2]、第1次或单词表的行数有变换，需要把degree.json文件初始化1次
+# [3]、degree.json文件中，左边的序号-1 = Excel的序号
+
+# 3、程序运行会丢失EXcel的字体颜色和下滑线，若对其有特殊意义,不要用该程序，若Excel移到其他文件夹，要改变代码中的路径【对于拿来背单词或作文不影响】
+# 4、关键信息：ck查看、fb泛背（0认识、1不认识）、jb精背、cx重新、pj票据【窗口放大到300，使用最佳】
+# 5、泛背不需要读音和拼写，把单词看作一个整体，去想是否知道中文意思
+# 6、对于作文的处理，只有精背
+# 7、速刷模式，在CMD命名窗口下，停止运行快捷键为Ctrl+C
